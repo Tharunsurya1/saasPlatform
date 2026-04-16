@@ -357,109 +357,61 @@ const EmployeeDatasetsPage = () => {
               </div>
             ))
           )}
-        </div>
+</div>
       </div>
 
-      {previewModal && (
-        <div className="emp-modal-overlay" onClick={() => setPreviewModal(null)}>
-          <div className="glass-panel emp-modal" onClick={e => e.stopPropagation()}>
-            <div className="emp-modal-header">
-              <div style={{ flex: 1 }}>
-                <div className="emp-modal-title">{previewModal.name}</div>
-                <div className="emp-modal-subtitle">
-                  First 50 rows • Read-only • Total: {previewModal.rows?.toLocaleString() || '—'} rows
-                </div>
-              </div>
-              <button className="emp-btn emp-btn-ghost emp-btn-sm" onClick={() => setPreviewModal(null)}>
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="emp-modal-body" style={{ overflowX: 'auto', padding: '0 1.25rem' }}>
-              {previewModal.loading ? (
-                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  <div className="spin" style={{ marginBottom: '1rem' }}>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2">
-                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                    </svg>
+      <>
+        {previewModal && (
+          <div className="emp-modal-overlay" onClick={() => setPreviewModal(null)}>
+            <div className="glass-panel emp-modal" onClick={e => e.stopPropagation()}>
+              <div className="emp-modal-header">
+                <div style={{ flex: 1 }}>
+                  <div className="emp-modal-title">{previewModal.name}</div>
+                  <div className="emp-modal-subtitle">
+                    First 50 rows • Read-only • Total: {previewModal.rows?.toLocaleString() || '—'} rows
                   </div>
-                  Loading preview...
                 </div>
-              ) : previewModal.error ? (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>
-                  <div style={{ marginBottom: '0.5rem', fontSize: '1.5rem' }}>⚠️</div>
-                  <div style={{ fontWeight: 500 }}>Unable to load preview</div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>{previewModal.error}</div>
-                  <button 
-                    className="emp-btn emp-btn-ghost emp-btn-sm" 
-                    style={{ marginTop: '1rem' }}
-                    onClick={() => {
-                      const retryDs = { 
-                        dataset_id: previewModal._datasetId, 
-                        name: previewModal.name 
-                      };
-                      setPreviewModal({
-                        name: previewModal.name,
-                        type: previewModal.type,
-                        version: previewModal.version,
-                        rows: previewModal.rows,
-                        cols: previewModal.cols,
-                        size: previewModal.size,
-                        loading: true,
-                        data: [],
-                      });
-                      openPreview(retryDs);
-                    }}
-                  >
-                    Try Again
-                  </button>
-                </div>
-              ) : previewModal.data.length > 0 ? (
-                <div style={{ minWidth: '100%', overflowX: 'auto' }}>
-                  <table className="emp-modal-table">
+                <button className="emp-btn emp-btn-ghost emp-btn-sm" onClick={() => setPreviewModal(null)}>
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div className="emp-modal-body" style={{ maxHeight: '60vh', overflowY: 'auto', padding: '1rem' }}>
+                {previewModal.loading ? (
+                  <div className="emp-loading">Loading preview...</div>
+                ) : (
+                  <table className="emp-data-table">
                     <thead>
                       <tr>
-                        <th style={{ width: '40px' }}>#</th>
-                        {(previewModal.headers || Object.keys(previewModal.data[0])).map(col => (
-                          <th key={col} style={{ whiteSpace: 'nowrap' }}>{col}</th>
-                        ))}
+                        {previewModal.headers?.map((h, i) => <th key={i}>{h}</th>)}
                       </tr>
                     </thead>
                     <tbody>
-                      {previewModal.data.map((row, i) => (
-                        <tr key={i}>
-                          <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{i + 1}</td>
-                          {(previewModal.headers || Object.keys(previewModal.data[0])).map((col, ci) => (
-                            <td key={ci} style={{ fontFamily: "'DM Mono', monospace", whiteSpace: 'nowrap', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {row[col] === null || row[col] === undefined || row[col] === '' ? <span style={{ color: 'var(--text-muted)', opacity: 0.5 }}>null</span> : String(row[col])}
-                            </td>
+                      {previewModal.data.map((row, ri) => (
+                        <tr key={ri}>
+                          {previewModal.headers?.map((h, ci) => (
+                            <td key={ci}>{row[h]}</td>
                           ))}
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              ) : (
-                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  No preview data available. The dataset may still be processing.
-                </div>
-              )}
-            </div>
-
-            <div className="emp-modal-footer" style={{ padding: '1rem 1.5rem' }}>
-              <div className="emp-modal-footer-info" style={{ paddingLeft: '0.5rem' }}>
-                {previewModal.loading ? 'Loading...' : `Showing first ${previewModal.data.length} rows`}
+                )}
               </div>
-              <div className="emp-modal-footer-actions">
-                <button className="emp-btn emp-btn-ghost emp-btn-sm" onClick={() => setPreviewModal(null)}>Close</button>
-                {/* Cleaning button hidden as requested */}
+
+              <div className="emp-modal-footer" style={{ padding: '1rem 1.5rem' }}>
+                <div className="emp-modal-footer-info" style={{ paddingLeft: '0.5rem' }}>
+                  {previewModal.loading ? 'Loading...' : `Showing first ${previewModal.data.length} rows`}
+                </div>
+                <div className="emp-modal-footer-actions">
+                  <button className="emp-btn emp-btn-ghost emp-btn-sm" onClick={() => setPreviewModal(null)}>Close</button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {showRequestModal && (
+        {showRequestModal && (
         <div className="emp-modal-overlay" onClick={() => setShowRequestModal(false)}>
           <div className="glass-panel emp-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <div className="emp-modal-header">
@@ -536,6 +488,7 @@ const EmployeeDatasetsPage = () => {
           </div>
         </div>
       )}
+      </>
 
     </EmployeeLayout>
   );
