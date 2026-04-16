@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './EmployeeCleaningPage.css';
-import { getDatasetPreview, transformDataset, finalizeDataset, pauseCleaning } from '../../services/api';
+import { getDatasetPreview, transformDataset, finalizeDataset, revertDataset, pauseCleaning } from '../../services/api';
 
 
 const STEPS = [
@@ -57,6 +57,7 @@ const EmployeeCleaningPage = () => {
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [featStatuses, setFeatStatuses] = useState({});
   const [error, setError] = useState(null);
+  const [isFinalized, setIsFinalized] = useState(false);
   const [page, setPage] = useState(1);
   const [totalRows, setTotalRows] = useState(0);
   const [rawStats, setRawStats] = useState({
@@ -292,7 +293,7 @@ const EmployeeCleaningPage = () => {
     setCleanedRows(data);
   }, [settings, tableRows, tableHeaders, featStatuses, aiSuggestions]);
 
-  const handleTransformation = async (stepId, manualSettings = null) => {
+  const handleTransformation = async (stepId, manualSettings = null, moveToNext = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -316,14 +317,6 @@ const EmployeeCleaningPage = () => {
         if (previewRes.success) {
           setTableRows(previewRes.data || []);
           setTotalRows(previewRes.totalRows || 0);
-          // Update current step to next
-          if (currentStep < 5) {
-            const nextS = currentStep + 1;
-            setCurrentStep(nextS);
-            if (nextS === 5 && !featDone && !featStreaming) startFeatStream();
-          } else {
-            setVerifyOpen(true);
-          }
         }
       } else {
         throw new Error(res.message || "Backend transformation error");
@@ -354,13 +347,23 @@ const EmployeeCleaningPage = () => {
 
   const handleLetAiDecide = async () => {
     // 1. Generate AI settings for current step
-    const newSettings = handleAiDecide(); // This currently just updates state, let's make it return settings
-    // 2. Apply them
-    await handleTransformation(currentStep, newSettings);
+    const newSettings = handleAiDecide();
+    // 2. Apply them without moving to next step
+    await handleTransformation(currentStep, newSettings, false);
   };
 
   const handleApplyManual = async () => {
-    await handleTransformation(currentStep);
+    await handleTransformation(currentStep, null, false);
+  };
+
+  const handleApplyManualThenNext = async () => {
+    const nextStep = currentStep + 1;
+    await handleTransformation(currentStep, null, true);
+    // Only navigate if transformation was successful (we're not loading anymore)
+    if (!loading && nextStep <= 5) {
+      setCurrentStep(nextStep);
+      if (nextStep === 5 && !featDone && !featStreaming) startFeatStream();
+    }
   };
 
   const startFeatStream = () => {
@@ -516,6 +519,21 @@ const EmployeeCleaningPage = () => {
     if (!dsId) return;
     const downloadUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/datasets/${dsId}/download`;
     window.open(downloadUrl, '_blank');
+  };
+
+  const handleRevert = async () => {
+    if (!dsId) return;
+    try {
+      const res = await revertDataset(dsId);
+      if (res.success) {
+        setIsFinalized(false);
+        setError(null);
+      } else {
+        setError(res.message || "Failed to revert");
+      }
+    } catch (err) {
+      setError("Failed to revert dataset");
+    }
   };
 
   return (
@@ -695,11 +713,13 @@ const EmployeeCleaningPage = () => {
                         </select>
                       </div>
                     ))
-                  )}
+)}
                 </div>
-                <div className="clean-skip-bar">
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" onClick={() => setCurrentStep(2)}>Skip This Step</button>
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" style={{color:'var(--purple)', borderColor:'rgba(167,139,250,0.3)'}} onClick={handleAiDecide}>✦ Let AI Decide</button>
+                <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                  <button className="clean-btn clean-btn-primary" style={{ flex: 1 }} onClick={handleApplyManual} disabled={loading}>Apply Changes</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleApplyManualThenNext} disabled={loading}>Apply & Next →</button>
+                  <button className="clean-btn clean-btn-ghost" style={{ flex: 1 }} onClick={() => setCurrentStep(3)}>Skip This Step</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleLetAiDecide} disabled={loading}>✦ Let AI Decide</button>
                 </div>
               </div>
             )}
@@ -709,7 +729,7 @@ const EmployeeCleaningPage = () => {
               <div>
                 <div className="clean-stat-row">
                   <div className="clean-stat-mini"><div className="clean-stat-mini-val" style={{color:'var(--amber)'}}>{totDupes}</div><div className="clean-stat-mini-lbl">Dupes Found</div></div>
-                  <div className="clean-stat-mini"><div className="clean-stat-mini-val">{(tableRows.length - totDupes).toLocaleString()}</div><div className="clean-stat-mini-lbl">Unique Rows</div></div>
+                  <div className="clean-stat-mini"><div className="clean-stat-mini-val">{totalRows.toLocaleString()}</div><div className="clean-stat-mini-lbl">Total Rows</div></div>
                 </div>
                 <div className="clean-step-card">
                   <div className="clean-step-card-title">Duplicate Strategy</div>
@@ -725,9 +745,11 @@ const EmployeeCleaningPage = () => {
                     })}
                   </div>
                 </div>
-                <div className="clean-skip-bar">
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" onClick={() => setCurrentStep(3)}>Skip This Step</button>
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" style={{color:'var(--purple)', borderColor:'rgba(167,139,250,0.3)'}} onClick={handleAiDecide}>✦ Let AI Decide</button>
+                <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                  <button className="clean-btn clean-btn-primary" style={{ flex: 1 }} onClick={handleApplyManual} disabled={loading}>Apply Changes</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleApplyManualThenNext} disabled={loading}>Apply & Next →</button>
+                  <button className="clean-btn clean-btn-ghost" style={{ flex: 1 }} onClick={() => setCurrentStep(4)}>Skip This Step</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleLetAiDecide} disabled={loading}>✦ Let AI Decide</button>
                 </div>
               </div>
             )}
@@ -748,9 +770,11 @@ const EmployeeCleaningPage = () => {
                     );
                   })}
                 </div>
-                <div className="clean-skip-bar">
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" onClick={() => setCurrentStep(4)}>Skip This Step</button>
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" style={{color:'var(--purple)', borderColor:'rgba(167,139,250,0.3)'}} onClick={handleAiDecide}>✦ Let AI Decide</button>
+                <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                  <button className="clean-btn clean-btn-primary" style={{ flex: 1 }} onClick={handleApplyManual} disabled={loading}>Apply Changes</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleApplyManualThenNext} disabled={loading}>Apply & Next →</button>
+                  <button className="clean-btn clean-btn-ghost" style={{ flex: 1 }} onClick={() => setCurrentStep(4)}>Skip This Step</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleLetAiDecide} disabled={loading}>✦ Let AI Decide</button>
                 </div>
               </div>
             )}
@@ -773,9 +797,11 @@ const EmployeeCleaningPage = () => {
                     ))
                   )}
                 </div>
-                <div className="clean-skip-bar">
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" onClick={() => setCurrentStep(5)}>Skip This Step</button>
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn" style={{color:'var(--purple)', borderColor:'rgba(167,139,250,0.3)'}} onClick={handleAiDecide}>✦ Let AI Decide</button>
+                <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
+                  <button className="clean-btn clean-btn-primary" style={{ flex: 1 }} onClick={handleApplyManual} disabled={loading}>Apply Changes</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleApplyManualThenNext} disabled={loading}>Apply & Next →</button>
+                  <button className="clean-btn clean-btn-ghost" style={{ flex: 1 }} onClick={() => setCurrentStep(5)}>Skip This Step</button>
+                  <button className="clean-btn" style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }} onClick={handleLetAiDecide} disabled={loading}>✦ Let AI Decide</button>
                 </div>
               </div>
             )}
@@ -835,10 +861,11 @@ const EmployeeCleaningPage = () => {
                   </button>
                 )}
 
-                <div className="clean-skip-bar" style={{ display: featDone ? 'flex' : 'none' }}>
-                  <button className="clean-btn clean-btn-ghost clean-skip-btn">Skip Feature Eng.</button>
-                  <button className="clean-btn clean-btn-green clean-skip-btn" onClick={() => setVerifyOpen(true)}>Finalize Dataset →</button>
-                </div>
+                {featDone && (
+                  <div style={{ marginTop: 16 }}>
+                    <button className="clean-btn clean-btn-green" style={{ width: '100%' }} onClick={() => setVerifyOpen(true)}>Finalize Dataset →</button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -852,43 +879,8 @@ const EmployeeCleaningPage = () => {
                    >
                      ← Previous Step
                    </button>
-                 )}
+)}
               </div>
-              {currentStep < 5 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button 
-                      className="clean-btn" 
-                      style={{ flex: 1, background: 'rgba(167, 139, 250, 0.1)', color: 'var(--purple)', border: '1px solid rgba(167, 139, 250, 0.3)' }}
-                      onClick={handleLetAiDecide}
-                      disabled={loading}
-                    >
-                      ✦ Let AI Decide
-                    </button>
-                    <button 
-                      className="clean-btn clean-btn-primary" 
-                      style={{ flex: 1 }}
-                      onClick={handleApplyManual}
-                      disabled={loading}
-                    >
-                      Apply Changes
-                    </button>
-                  </div>
-                  <button 
-                    className="clean-btn clean-btn-ghost" 
-                    style={{ width: '100%', fontSize: 12, opacity: 0.8 }}
-                    onClick={handleSkip}
-                    disabled={loading}
-                  >
-                    Skip this step
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 8 }}>
-                   <button className="clean-btn clean-btn-ghost" style={{flex: 1}} onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}>← Back</button>
-                   <button className="clean-btn clean-btn-primary" style={{flex: 1}} onClick={() => setVerifyOpen(true)}>Finalize Dataset →</button>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -899,11 +891,6 @@ const EmployeeCleaningPage = () => {
         <div className="clean-step-indicator">Step {currentStep} of 5 — {STEPS[currentStep-1].name}</div>
         <div style={{ display: 'flex', gap: 8 }}>
           {currentStep > 1 && <button className="clean-btn clean-btn-ghost" onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))}>← Previous</button>}
-          {currentStep < 5 ? (
-             <button className="clean-btn clean-btn-primary" onClick={handleApplyManual} disabled={loading}>Apply & Next</button>
-          ) : (
-             <button className="clean-btn clean-btn-primary" onClick={() => setVerifyOpen(true)}>Finalize</button>
-          )}
         </div>
       </div>
 
@@ -963,29 +950,52 @@ const EmployeeCleaningPage = () => {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="clean-btn clean-btn-primary" onClick={handleDownload}>↓ Download Cleaned CSV</button>
+                {isFinalized && (
+                  <button className="clean-btn clean-btn-ghost" onClick={handleRevert}>↺ Undo Finalize</button>
+                )}
                 <button 
                   className="clean-btn clean-btn-green" 
                   disabled={loading}
                   onClick={async () => {
                     setLoading(true);
+                    setError(null);
                     try {
+                      console.log('[Finalize] Starting for dataset:', dsId);
+                      
                       // 1. Gather accepted features
                       const acceptedFeatures = aiSuggestions.filter(s => featStatuses[s.id] === 'accept');
+                      console.log('[Finalize] Accepted features:', acceptedFeatures.length);
                       
                       // 2. If features exist, apply them via the transformation engine first
                       if (acceptedFeatures.length > 0) {
                         const transformConfig = { type: 'feature_eng', params: { features: acceptedFeatures } };
                         const transformRes = await transformDataset(dsId, transformConfig.type, transformConfig.params);
+                        console.log('[Finalize] Transform result:', transformRes);
                         if (!transformRes.success) {
                           throw new Error("Failed to generate features: " + transformRes.message);
                         }
                       }
 
                       // 3. Move file to finalized (cleaned) directory
-                      await finalizeDataset(dsId);
+                      console.log('[Finalize] Calling finalizeDataset...');
+                      const finalizeRes = await finalizeDataset(dsId);
+                      console.log('[Finalize] Finalize result:', finalizeRes);
+                      
+                      if (!finalizeRes.success) {
+                        throw new Error(finalizeRes.message || "Failed to finalize dataset");
+                      }
+                      
+                      setIsFinalized(true);
+                      
+                      // 4. Navigate to visualization page
+                      console.log('[Finalize] Navigating to visualization...');
                       navigate(`/employee/visualization?ds=${dsId}&name=${encodeURIComponent(dsName)}`);
                     } catch (err) {
+                      console.error('[Finalize] Error:', err);
                       setError(err.message || "Failed to finalize dataset.");
+                      // Navigate anyway for debugging - remove this in production
+                      console.log('[Finalize] Navigating anyway due to error...');
+                      navigate(`/employee/visualization?ds=${dsId}&name=${encodeURIComponent(dsName)}`);
                     } finally {
                       setLoading(false);
                     }

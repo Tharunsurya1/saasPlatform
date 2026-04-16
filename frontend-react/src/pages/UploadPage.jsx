@@ -92,7 +92,7 @@ const UploadPage = () => {
         
         // Show success state briefly then redirect
         setTimeout(() => {
-          navigate('/employee/datasets');
+          navigate('/datasets');
         }, 1500);
       } else {
         setError('Upload succeeded but dataset ID is missing in response.');
@@ -126,7 +126,7 @@ const UploadPage = () => {
           </p>
           <div className="flex-center" style={{ gap: 12, color: 'var(--text-muted)', fontSize: 13 }}>
             <Loader size={16} className="spin" />
-            <span>Redirecting to your datasets...</span>
+            <span>Redirecting to datasets...</span>
           </div>
         </div>
       </div>

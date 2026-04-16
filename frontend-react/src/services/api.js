@@ -203,6 +203,11 @@ export const finalizeDataset = async (datasetId) => {
     return response.data;
 };
 
+export const revertDataset = async (datasetId) => {
+    const response = await api.post(`/datasets/${datasetId}/revert`);
+    return response.data;
+};
+
 export const getActivityLogs = async (filters = {}) => {
     const response = await api.get('/activity-logs', { params: filters });
     return response.data;

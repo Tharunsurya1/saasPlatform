@@ -6,6 +6,7 @@ import {
   updateDatasetStatus,
   transformDataset,
   finalizeDataset,
+  revertFinalize,
   trainDataset,
   getAnalysis,
   getMetrics,
@@ -69,6 +70,7 @@ router.get("/datasets/:id/download", protect, downloadDataset);
 // Dataset Transformations (Workspace Model)
 router.post("/datasets/:id/transform", protect, transformDataset);
 router.post("/datasets/:id/finalize", protect, finalizeDataset);
+router.post("/datasets/:id/revert", protect, revertFinalize);
 router.post("/datasets/:id/pause", protect, pauseCleaning);
 
 

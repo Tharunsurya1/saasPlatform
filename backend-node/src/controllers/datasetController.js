@@ -315,6 +315,12 @@ export const getDatasetPreview = async (req, res) => {
       targetPath = paths.raw;
     }
 
+    try {
+      await fs.access(targetPath);
+    } catch {
+      return res.status(404).json({ success: false, message: "Dataset not available" });
+    }
+
     const totalRows = await countLines(targetPath);
     const headers = await getCSVHeaders(targetPath);
     
@@ -423,6 +429,12 @@ export const downloadDataset = async (req, res) => {
       }
     } catch {
       filePath = paths.raw;
+    }
+
+    try {
+      await fs.access(filePath);
+    } catch {
+      return res.status(404).json({ success: false, message: "Dataset not available" });
     }
 
     // 3. Send file
@@ -601,9 +613,26 @@ export const finalizeDataset = async (req, res) => {
     const fs = (await import("fs/promises")).default;
     await fs.mkdir(path.dirname(paths.cleaned), { recursive: true });
     
-    // Copy to cleaned, then unlink temp
-    await fs.copyFile(paths.temp, paths.cleaned);
-    await fs.unlink(paths.temp).catch(() => {});
+    // Find source file: prefer temp, then cleaned (if re-cleaning), then raw
+    let sourcePath = paths.temp;
+    try {
+      await fs.access(sourcePath);
+    } catch {
+      // Try cleaned (if exists from previous finalize)
+      try {
+        await fs.access(paths.cleaned);
+        sourcePath = paths.cleaned;
+      } catch {
+        // Fall back to raw
+        sourcePath = paths.raw;
+      }
+    }
+    
+    // Copy to cleaned, then unlink temp if it was the source
+    await fs.copyFile(sourcePath, paths.cleaned);
+    if (sourcePath === paths.temp) {
+      await fs.unlink(paths.temp).catch(() => {});
+    }
 
     await pool.query("UPDATE datasets SET upload_status = 'cleaned', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
     
@@ -616,6 +645,44 @@ export const finalizeDataset = async (req, res) => {
   } catch (err) {
     console.error("finalizeDataset error:", err);
     return res.status(500).json({ success: false, message: "Failed to finalize dataset" });
+  }
+};
+
+export const revertFinalize = async (req, res) => {
+  const datasetId = req.params.id;
+  const userEmail = req.user?.email;
+
+  try {
+    const userRes = await pool.query("SELECT user_id, role FROM users WHERE email = $1", [userEmail]);
+    const user = userRes.rows[0];
+    if (!(await validateDatasetAccess(user.user_id, datasetId, user.role))) {
+      return res.status(403).json({ success: false, message: "Access denied" });
+    }
+
+    const dsRes = await pool.query("SELECT file_name FROM datasets WHERE dataset_id = $1", [datasetId]);
+    const { file_name } = dsRes.rows[0];
+    const fullName = user.full_name || "unknown_user";
+    const paths = getDatasetPaths(datasetId, file_name, fullName);
+
+    const fs = (await import("fs/promises")).default;
+    
+    // Check if cleaned file exists
+    try {
+      await fs.access(paths.cleaned);
+    } catch {
+      return res.status(400).json({ success: false, message: "No finalized dataset found" });
+    }
+    
+    // Copy cleaned back to temp, then unlink cleaned
+    await fs.copyFile(paths.cleaned, paths.temp);
+    await fs.unlink(paths.cleaned).catch(() => {});
+
+    await pool.query("UPDATE datasets SET upload_status = 'cleaning', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
+    
+    return res.json({ success: true, message: "Dataset reverted to cleaning state" });
+  } catch (err) {
+    console.error("revertFinalize error:", err);
+    return res.status(500).json({ success: false, message: "Failed to revert dataset" });
   }
 };
 
@@ -651,16 +718,25 @@ export const getAnalysis = async (req, res) => {
   let cleanedDataPath = null;
 
   // Prefer cleaned, then working, then raw
-  if (await fs.access(paths.cleaned).then(() => true).catch(() => false)) {
+  try {
+    await fs.access(paths.cleaned);
     cleanedDataPath = paths.cleaned;
-  } else if (await fs.access(paths.working).then(() => true).catch(() => false)) {
-    cleanedDataPath = paths.working;
-  } else if (await fs.access(paths.raw).then(() => true).catch(() => false)) {
-    cleanedDataPath = paths.raw;
+  } catch {
+    try {
+      await fs.access(paths.working);
+      cleanedDataPath = paths.working;
+    } catch {
+      try {
+        await fs.access(paths.raw);
+        cleanedDataPath = paths.raw;
+      } catch {
+        cleanedDataPath = null;
+      }
+    }
   }
 
   if (!cleanedDataPath) {
-    return res.json({ success: true, dataset_name: datasetId, row_count: 0, column_count: 0, quality_score: null, total_nulls: 0, duplicate_rows: 0, cleaning_report: [], columns: [] });
+    return res.status(404).json({ success: false, message: "Dataset not available" });
   }
 
   try {
