@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, FileText, Eye, ChevronDown, ChevronUp, RefreshCw, BarChart3, Trash2, AlertTriangle, X, Sparkles, Plus, Database, Loader } from 'lucide-react';
+import { Search, FileText, Eye, ChevronDown, ChevronUp, RefreshCw, BarChart3, AlertTriangle, X, Sparkles, Plus, Database, Loader } from 'lucide-react';
 import axios from 'axios';
-import { getDatasets, deleteDataset, getDatasetPreview, getAvailableDatasetsToRequest, requestPermission } from '../../services/api';
+import { getDatasets, getDatasetPreview, getAvailableDatasetsToRequest, requestPermission } from '../../services/api';
 
 import EmployeeLayout from '../../layout/EmployeeLayout';
 
@@ -55,8 +55,6 @@ const EmployeeDatasetsPage = () => {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [previewModal, setPreviewModal] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [isDeleting, setIsDeleting] = useState(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [availableDatasets, setAvailableDatasets] = useState([]);
   const [isLoadingAvailable, setIsLoadingAvailable] = useState(false);
@@ -182,36 +180,6 @@ const EmployeeDatasetsPage = () => {
         error: err.response?.data?.message || 'Unable to load preview. Please try again.' 
       }));
     }
-  };
-
-  const handleDelete = async (ds, e) => {
-    e.stopPropagation();
-    const dsId = ds.dataset_id || ds.id;
-    setDeleteConfirm({ id: dsId, name: ds.name });
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteConfirm) return;
-    setIsDeleting(deleteConfirm.id);
-    try {
-      const res = await deleteDataset(deleteConfirm.id);
-      if (res.success) {
-        setDatasets(datasets.filter(d => (d.dataset_id || d.id) !== deleteConfirm.id));
-      } else {
-        alert(res.message || 'Failed to delete dataset');
-      }
-    } catch (err) {
-      console.error('Delete error:', err);
-      alert('Failed to delete dataset');
-    } finally {
-      setIsDeleting(null);
-      setDeleteConfirm(null);
-    }
-  };
-
-  const cancelDelete = () => {
-    setDeleteConfirm(null);
-    setIsDeleting(null);
   };
 
   const filtered = datasets.filter(ds => {
@@ -385,19 +353,6 @@ const EmployeeDatasetsPage = () => {
                       }}>
                       <Sparkles size={12} /> Clean
                     </button>
-                  </div>
-                    <button 
-                      className="emp-btn emp-btn-ghost emp-btn-sm"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(ds, e); }}
-                      style={{ color: 'var(--danger)' }}
-                      disabled={isDeleting === (ds.dataset_id || ds.id)}
-                    >
-                      {isDeleting === (ds.dataset_id || ds.id) ? (
-                        <RefreshCw size={12} className="spin" />
-                      ) : (
-                        <Trash2 size={12} />
-                      )}
-                    </button>
                 </div>
               </div>
             ))
@@ -498,36 +453,6 @@ const EmployeeDatasetsPage = () => {
               <div className="emp-modal-footer-actions">
                 <button className="emp-btn emp-btn-ghost emp-btn-sm" onClick={() => setPreviewModal(null)}>Close</button>
                 {/* Cleaning button hidden as requested */}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deleteConfirm && (
-        <div className="emp-modal-overlay" onClick={cancelDelete}>
-          <div className="glass-panel emp-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
-            <div className="emp-modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <AlertTriangle size={20} color="var(--danger)" />
-                <div className="emp-modal-title">Delete Dataset?</div>
-              </div>
-            </div>
-            <div style={{ padding: '1.25rem' }}>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                This will permanently delete <strong style={{ color: '#fff' }}>{deleteConfirm.name}</strong> and all its files. This action cannot be undone.
-              </p>
-            </div>
-            <div className="emp-modal-footer">
-              <div className="emp-modal-footer-actions" style={{ justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button className="emp-btn emp-btn-ghost emp-btn-sm" onClick={cancelDelete}>Cancel</button>
-                <button 
-                  className="emp-btn emp-btn-sm" 
-                  onClick={confirmDelete}
-                  style={{ background: 'var(--danger)', border: 'none', color: '#fff' }}
-                >
-                  Delete
-                </button>
               </div>
             </div>
           </div>
