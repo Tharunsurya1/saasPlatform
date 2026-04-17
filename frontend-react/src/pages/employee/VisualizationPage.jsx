@@ -97,19 +97,19 @@ const VisualizationPage = () => {
   const TABLE_PAGE_SIZE = 50;
   const [chartType, setChartType] = useState('bar');
   const [aggregation, setAggregation] = useState('sum');
-  
+
   const [chartXAxis, setChartXAxis] = useState('');
   const [chartYAxis, setChartYAxis] = useState('');
-  
+
   const [availableDatasets, setAvailableDatasets] = useState([]);
   const [selectedDataset, setSelectedDataset] = useState(null);
 
   const isInitialized = useRef(false);
 
   const loadData = useCallback(async (currentFilters = {}, currentSearch = '', currentPage = 1) => {
-    if (!datasetId) { 
-      setLoading(false); 
-      return; 
+    if (!datasetId) {
+      setLoading(false);
+      return;
     }
     setLoading(true);
     setError('');
@@ -118,10 +118,10 @@ const VisualizationPage = () => {
         fetchCleanedData(datasetId, { filters: currentFilters, search: currentSearch, page: currentPage, limit: 500 }),
         getDashboardConfig(datasetId).catch(() => null),
       ]);
-      
+
       if (cleanedRes.success) {
         setData(cleanedRes);
-        
+
         if (!isInitialized.current && cleanedRes.headers?.length > 0) {
           const catCol = cleanedRes.headers.find(h => cleanedRes.columnTypes?.[h] === 'categorical');
           const numCol = cleanedRes.headers.find(h => cleanedRes.columnTypes?.[h] === 'numeric');
@@ -132,7 +132,7 @@ const VisualizationPage = () => {
       } else {
         setError(cleanedRes.message || 'Failed to load data');
       }
-      
+
       if (dashRes) setDashboardConfig(dashRes);
     } catch {
       setError('Failed to connect to data service');
@@ -141,9 +141,9 @@ const VisualizationPage = () => {
     }
   }, [datasetId]);
 
-  useEffect(() => { 
+  useEffect(() => {
     if (datasetId) {
-      loadData(appliedFilters, search, page); 
+      loadData(appliedFilters, search, page);
     }
   }, [datasetId]);
 
@@ -154,7 +154,7 @@ const VisualizationPage = () => {
         if (res.success && res.data) {
           const readyDatasets = res.data.filter(d => d.status === 'completed' || d.status === 'ready' || d.status === 'cleaned');
           setAvailableDatasets(readyDatasets);
-          
+
           if (!datasetId && readyDatasets.length > 0) {
             const firstReady = readyDatasets[0];
             setSelectedDataset(firstReady);
@@ -171,19 +171,19 @@ const VisualizationPage = () => {
     loadDatasets();
   }, [datasetId]);
 
-  const applyFilters = useCallback(() => { 
-    setAppliedFilters({ ...filters }); 
-    setPage(1); 
-    loadData({ ...filters }, search, 1); 
+  const applyFilters = useCallback(() => {
+    setAppliedFilters({ ...filters });
+    setPage(1);
+    loadData({ ...filters }, search, 1);
   }, [filters, search, loadData]);
 
-  const clearFilters = useCallback(() => { 
-    setFilters({}); 
-    setAppliedFilters({}); 
-    setSearch(''); 
-    setPage(1); 
+  const clearFilters = useCallback(() => {
+    setFilters({});
+    setAppliedFilters({});
+    setSearch('');
+    setPage(1);
     setCrossFilter({});
-    loadData({}, '', 1); 
+    loadData({}, '', 1);
   }, [loadData]);
 
   const toggleFilterValue = useCallback((col, val) => {
@@ -240,20 +240,20 @@ const VisualizationPage = () => {
 
   const chartData = useMemo(() => {
     if (!data?.rows || !chartXAxis || !chartYAxis || !headers.length) return [];
-    
+
     const isNumericY = data.columnTypes?.[chartYAxis] === 'numeric';
     const grouped = {};
     const counts = {};
     const maxs = {};
     const mins = {};
     const sums = {};
-    
+
     // Cross-filter: apply cross-filter from chart clicks
     const crossFilterKeys = Object.keys(crossFilter);
-    
+
     for (let i = 0; i < data.rows.length; i++) {
       const row = data.rows[i];
-      
+
       // Apply cross-filter - skip row if it doesn't match cross-filter values
       let skip = false;
       for (let j = 0; j < crossFilterKeys.length; j++) {
@@ -269,10 +269,10 @@ const VisualizationPage = () => {
         }
       }
       if (skip) continue;
-      
+
       const key = row[chartXAxis] || 'Unknown';
       const val = row[chartYAxis];
-      
+
       if (isNumericY) {
         const numVal = parseFloat(val);
         if (!isNaN(numVal)) {
@@ -287,20 +287,20 @@ const VisualizationPage = () => {
         counts[key] = (counts[key] || 0) + 1;
       }
     }
-    
+
     const entries = Object.entries(grouped);
     const result = [];
-    
+
     for (let i = 0; i < entries.length; i++) {
       const [name, value] = entries[i];
       result.push({
         name: String(name).substring(0, 18),
-        value: isNumericY 
-          ? (aggregation === 'sum' ? Math.round((sums[name] || 0) * 100) / 100 : 
-             aggregation === 'count' ? counts[name] || 0 :
-             aggregation === 'avg' ? Math.round(((sums[name] || 0) / (counts[name] || 1)) * 100) / 100 :
-             aggregation === 'max' ? Math.round((maxs[name] || 0) * 100) / 100 :
-             aggregation === 'min' ? Math.round((mins[name] || 0) * 100) / 100 : value)
+        value: isNumericY
+          ? (aggregation === 'sum' ? Math.round((sums[name] || 0) * 100) / 100 :
+            aggregation === 'count' ? counts[name] || 0 :
+              aggregation === 'avg' ? Math.round(((sums[name] || 0) / (counts[name] || 1)) * 100) / 100 :
+                aggregation === 'max' ? Math.round((maxs[name] || 0) * 100) / 100 :
+                  aggregation === 'min' ? Math.round((mins[name] || 0) * 100) / 100 : value)
           : value,
         rawValue: value,
         count: counts[name] || 0,
@@ -308,7 +308,7 @@ const VisualizationPage = () => {
         min: mins[name]
       });
     }
-    
+
     result.sort((a, b) => b.value - a.value);
     return result.slice(0, 10);
   }, [data, chartXAxis, chartYAxis, aggregation, headers, crossFilter]);
@@ -333,12 +333,12 @@ const VisualizationPage = () => {
         Select X and Y axes to generate a chart
       </div>
     );
-    
+
     const chartProps = {
       data: chartData,
       margin: { top: 10, right: 10, left: 0, bottom: 0 }
     };
-    
+
     switch (chartType) {
       case 'bar':
         return (
@@ -354,10 +354,10 @@ const VisualizationPage = () => {
               <XAxis dataKey="name" tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <YAxis tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <Tooltip content={<TooltipBox />} />
-              <Bar 
-                dataKey="value" 
-                name={chartYAxis} 
-                fill="url(#barFillGrad)" 
+              <Bar
+                dataKey="value"
+                name={chartYAxis}
+                fill="url(#barFillGrad)"
                 radius={[6, 6, 0, 0]}
                 onClick={(e) => {
                   if (e && e.name) handleCrossFilter(chartXAxis, e.name);
@@ -383,12 +383,12 @@ const VisualizationPage = () => {
               <XAxis dataKey="name" tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <YAxis tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <Tooltip content={<TooltipBox />} />
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                name={chartYAxis} 
-                stroke="url(#lineGrad)" 
-                strokeWidth={3} 
+              <Line
+                type="monotone"
+                dataKey="value"
+                name={chartYAxis}
+                stroke="url(#lineGrad)"
+                strokeWidth={3}
                 dot={{ fill: '#58a6ff', strokeWidth: 2, stroke: '#fff', r: 4 }}
                 onClick={(e) => {
                   if (e && e.name) handleCrossFilter(chartXAxis, e.name);
@@ -401,32 +401,100 @@ const VisualizationPage = () => {
       case 'pie':
         return (
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
               <defs>
                 {COLORS.map((color, i) => (
-                  <linearGradient key={i} id={`pieGrad${i}`} x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={1} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0.6} />
+                  <linearGradient
+                    key={i}
+                    id={`pieGrad${i}`}
+                    x1="0"
+                    y1="0"
+                    x2="1"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor={color}
+                      stopOpacity={1}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={color}
+                      stopOpacity={0.65}
+                    />
                   </linearGradient>
                 ))}
               </defs>
-              <Pie 
-                data={chartData} 
-                dataKey="value" 
-                nameKey="name" 
-                outerRadius={85} 
-                innerRadius={40} 
-                paddingAngle={3}
-                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                cx="35%"
+                cy="50%"
+                outerRadius={82}
+                innerRadius={42}
+                paddingAngle={4}
+                labelLine={false}
+                label={({ percent }) =>
+                  percent > 0.08
+                    ? `${(percent * 100).toFixed(0)}%`
+                    : ''
+                }
                 onClick={(e) => {
-                  if (e && e.name) handleCrossFilter(chartXAxis, e.name);
+                  if (e && e.name) {
+                    handleCrossFilter(
+                      chartXAxis,
+                      e.name
+                    );
+                  }
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                {chartData.map((_, i) => <Cell key={i} fill={`url(#pieGrad${i % COLORS.length})`} stroke="rgba(22,27,34,0.5)" strokeWidth={2} />)}
+                {chartData.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={`url(#pieGrad${i % COLORS.length
+                      })`}
+                    stroke="rgba(22,27,34,0.7)"
+                    strokeWidth={2}
+                  />
+                ))}
               </Pie>
-              <Tooltip content={<TooltipBox />} />
-              <Legend formatter={v => <span style={{ color: '#8b949e', fontSize: 9 }}>{v}</span>} />
+
+              <Tooltip content={<PieTooltip />} />
+
+              <Legend
+                layout="vertical"
+                align="right"
+                verticalAlign="middle"
+                iconType="circle"
+                iconSize={8}
+                wrapperStyle={{
+                  right: 0,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  lineHeight: '18px',
+                  fontSize: '10px',
+                  maxHeight: '180px',
+                  overflowY: 'auto'
+                }}
+                formatter={(value) => (
+                  <span
+                    style={{
+                      color: '#c9d1d9',
+                      fontSize: 10
+                    }}
+                  >
+                    {String(value).length > 18
+                      ? `${String(value).substring(
+                        0,
+                        18
+                      )}...`
+                      : value}
+                  </span>
+                )}
+              />
             </PieChart>
           </ResponsiveContainer>
         );
@@ -449,12 +517,12 @@ const VisualizationPage = () => {
               <XAxis dataKey="name" tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <YAxis tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <Tooltip content={<TooltipBox />} />
-              <Area 
-                type="monotone" 
-                dataKey="value" 
-                name={chartYAxis} 
-                stroke="url(#areaStroke)" 
-                fill="url(#areaGrad)" 
+              <Area
+                type="monotone"
+                dataKey="value"
+                name={chartYAxis}
+                stroke="url(#areaStroke)"
+                fill="url(#areaGrad)"
                 strokeWidth={3}
                 onClick={(e) => {
                   if (e && e.name) handleCrossFilter(chartXAxis, e.name);
@@ -564,19 +632,19 @@ const VisualizationPage = () => {
                 <div key={col} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                   <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{col}:</span>
                   {vals.map((v, i) => (
-                    <button 
+                    <button
                       key={i}
                       onClick={() => handleCrossFilter(col, v)}
-                      style={{ 
-                        fontSize: 8, padding: '2px 6px', borderRadius: 4, 
-                        background: 'rgba(88,166,255,0.15)', border: '1px solid var(--primary)', 
-                        color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 
+                      style={{
+                        fontSize: 8, padding: '2px 6px', borderRadius: 4,
+                        background: 'rgba(88,166,255,0.15)', border: '1px solid var(--primary)',
+                        color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
                       }}
                     >
                       {v} <span style={{ fontSize: 10 }}>×</span>
                     </button>
                   ))}
-                  <button 
+                  <button
                     onClick={() => clearCrossFilter(col)}
                     style={{ fontSize: 9, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
                   >
@@ -702,10 +770,10 @@ const VisualizationPage = () => {
             <div style={{ width: 1, height: 16, background: 'var(--border-color)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'var(--text-muted)' }}>X</span>
-              <select 
-                className="admin-filter-select" 
-                value={chartXAxis} 
-                onChange={(e) => setChartXAxis(e.target.value)} 
+              <select
+                className="admin-filter-select"
+                value={chartXAxis}
+                onChange={(e) => setChartXAxis(e.target.value)}
                 style={{ fontSize: 9 }}
               >
                 <option value="">Select</option>
@@ -717,10 +785,10 @@ const VisualizationPage = () => {
             <div style={{ width: 1, height: 16, background: 'var(--border-color)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'var(--text-muted)' }}>Y</span>
-              <select 
-                className="admin-filter-select" 
-                value={chartYAxis} 
-                onChange={(e) => setChartYAxis(e.target.value)} 
+              <select
+                className="admin-filter-select"
+                value={chartYAxis}
+                onChange={(e) => setChartYAxis(e.target.value)}
                 style={{ fontSize: 9 }}
               >
                 <option value="">Select</option>
@@ -732,10 +800,10 @@ const VisualizationPage = () => {
             <div style={{ width: 1, height: 16, background: 'var(--border-color)' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'var(--text-muted)' }}>AGG</span>
-              <select 
-                className="admin-filter-select" 
-                value={aggregation} 
-                onChange={(e) => setAggregation(e.target.value)} 
+              <select
+                className="admin-filter-select"
+                value={aggregation}
+                onChange={(e) => setAggregation(e.target.value)}
                 style={{ fontSize: 9, minWidth: 70 }}
               >
                 <option value="sum">Sum</option>
@@ -791,8 +859,8 @@ const VisualizationPage = () => {
               });
               const total = Object.values(grouped).reduce((a, b) => a + b, 0);
               const pieData = Object.entries(grouped)
-                .map(([name, value]) => ({ 
-                  name, 
+                .map(([name, value]) => ({
+                  name,
                   value: Math.round(value * 100) / 100,
                   total, // passed into tooltip for % calculation
                   fill: COLORS[Object.keys(grouped).indexOf(name) % COLORS.length]
@@ -824,27 +892,29 @@ const VisualizationPage = () => {
                           data={pieData}
                           dataKey="value"
                           nameKey="name"
-                          innerRadius={45}
-                          outerRadius={80}
-                          paddingAngle={2}
+                          innerRadius={40}
+                          outerRadius={65}
+                          paddingAngle={3}
                           stroke="none"
+                          label={false}
                         >
                           {pieData.map((entry, i) => (
-                            <Cell 
-                              key={i} 
+                            <Cell
+                              key={i}
                               fill={`url(#rg${i % COLORS.length})`}
                               style={{ cursor: 'pointer', outline: 'none' }}
                             />
                           ))}
                         </Pie>
-                        <Tooltip 
+                        <Tooltip
                           content={<PieTooltip />}
                           wrapperStyle={{ zIndex: 100 }}
                         />
                         <Legend
                           iconType="circle"
-                          iconSize={7}
-                          formatter={v => <span style={{ color: '#6e7681', fontSize: 9, fontFamily: "'IBM Plex Mono',monospace" }}>{String(v).substring(0, 16)}</span>}
+                          iconSize={5}
+                          formatter={v => <span style={{ color: '#6e7681', fontSize: 7, fontFamily: "'IBM Plex Mono',monospace" }}>{String(v).substring(0, 12)}{String(v).length > 12 ? '...' : ''}</span>}
+                          wrapperStyle={{ paddingTop: '8px' }}
                         />
                       </PieChart>
                     </ResponsiveContainer>

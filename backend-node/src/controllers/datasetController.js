@@ -266,6 +266,10 @@ const getCSVHeaders = async (filePath) => {
  * Preview rows of a dataset (Paginated)
  * GET /api/datasets/:id/preview?page=1&pageSize=50
  */
+/**
+ * Preview rows of a dataset (Paginated)
+ * GET /api/datasets/:id/preview?page=1&pageSize=50
+ */
 export const getDatasetPreview = async (req, res) => {
   const datasetId = req.params.id;
   const userEmail = req.user?.email;
@@ -273,41 +277,95 @@ export const getDatasetPreview = async (req, res) => {
   const pageSize = parseInt(req.query.pageSize) || 50;
 
   try {
-    const userResult = await pool.query("SELECT user_id, role FROM users WHERE email = $1", [userEmail]);
-    const user = userResult.rows[0];
-    if (!user) return res.status(401).json({ success: false, message: "User not found" });
+    const userResult = await pool.query(
+      "SELECT user_id, role FROM users WHERE email = $1",
+      [userEmail]
+    );
 
-    if (!(await validateDatasetAccess(user.user_id, datasetId, user.role))) {
-      return res.status(403).json({ success: false, message: "Unauthorized" });
+    const user = userResult.rows[0];
+
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: "User not found" });
     }
 
-    const dsResult = await pool.query("SELECT file_name, upload_status, schema_json FROM datasets WHERE dataset_id = $1", [datasetId]);
-    const { file_name, upload_status, schema_json } = dsResult.rows[0];
+    if (
+      !(await validateDatasetAccess(
+        user.user_id,
+        datasetId,
+        user.role
+      ))
+    ) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized" });
+    }
 
-    const fullName = await pool.query("SELECT full_name FROM users WHERE email = $1", [userEmail]).then(r => r.rows[0]?.full_name);
-    const paths = getDatasetPaths(datasetId, file_name, fullName);
-    // Resolution Priority: Temp (latest working) > Cleaned (final) > Raw (fallback)
+    const dsResult = await pool.query(
+      "SELECT file_name, upload_status, schema_json FROM datasets WHERE dataset_id = $1",
+      [datasetId]
+    );
+
+    const {
+      file_name,
+      upload_status,
+      schema_json
+    } = dsResult.rows[0];
+
+    const fullName = await pool
+      .query(
+        "SELECT full_name FROM users WHERE email = $1",
+        [userEmail]
+      )
+      .then((r) => r.rows[0]?.full_name);
+
+    const paths = getDatasetPaths(
+      datasetId,
+      file_name,
+      fullName
+    );
+
+    // Resolution Priority:
+    // Temp > Cleaned > Raw
     let targetPath = paths.raw;
+
     const fs = (await import("fs/promises")).default;
-    
-    // 1. Check if ANY temp file exists for this dataset (to support global Cleaning status)
-    // Actually, for preview, we should try to find the specific user's temp file first, 
-    // or the most recent temp file for this dataset.
-    const tempDir = path.resolve(process.cwd(), "..", "uploads", "temp");
+
+    const tempDir = path.resolve(
+      process.cwd(),
+      "..",
+      "uploads",
+      "temp"
+    );
+
     try {
       const files = await fs.readdir(tempDir);
-      const dsTempFiles = files.filter(f => f.startsWith(datasetId) && f.endsWith(".csv"));
+
+      const dsTempFiles = files.filter(
+        (f) =>
+          f.startsWith(datasetId) &&
+          f.endsWith(".csv")
+      );
+
       if (dsTempFiles.length > 0) {
-        // Find current user's temp file if exists, otherwise take the first one
-        const userTempFile = dsTempFiles.find(f => f.includes(fullName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()));
-        targetPath = path.join(tempDir, userTempFile || dsTempFiles[0]);
+        const safeName = fullName
+          ?.replace(/[^a-zA-Z0-9]/g, "_")
+          .toLowerCase();
+
+        const userTempFile = dsTempFiles.find(
+          (f) => f.includes(safeName)
+        );
+
+        targetPath = path.join(
+          tempDir,
+          userTempFile || dsTempFiles[0]
+        );
       } else {
-        // 2. Check Cleaned
         try {
           await fs.access(paths.cleaned);
           targetPath = paths.cleaned;
         } catch {
-          // 3. Fallback to Raw
           targetPath = paths.raw;
         }
       }
@@ -318,56 +376,117 @@ export const getDatasetPreview = async (req, res) => {
     try {
       await fs.access(targetPath);
     } catch {
-      return res.status(404).json({ success: false, message: "Dataset not available" });
+      return res.status(404).json({
+        success: false,
+        message: "Dataset not available"
+      });
     }
 
-    const totalRows = await countLines(targetPath);
     const headers = await getCSVHeaders(targetPath);
-    
+
     const { createReadStream } = await import("fs");
     const { parse } = await import("csv-parse");
-    const rows = [];
-    
-    // from_line 1 is the header. We want to start data from line 2.
-    // Page 1: from_line = 2, to_line = 51
-    // Page 2: from_line = 52, to_line = 101
-    const fromLine = (page - 1) * pageSize + 2;
-    const toLine = page * pageSize + 1;
 
-    const parser = createReadStream(targetPath).pipe(
-      parse({ 
-        columns: headers, 
-        trim: true, 
-        skip_empty_lines: true, 
-        from_line: fromLine, 
-        to_line: toLine 
+    // ---------- TOTAL VALID ROW COUNT ----------
+    let totalRows = 0;
+
+    const countParser = createReadStream(
+      targetPath
+    ).pipe(
+      parse({
+        columns: headers,
+        trim: true,
+        skip_empty_lines: true,
+        from_line: 2
+      })
+    );
+
+    for await (const record of countParser) {
+      const hasValue = Object.values(record).some(
+        (val) =>
+          val !== null &&
+          val !== undefined &&
+          String(val).trim() !== ""
+      );
+
+      if (hasValue) totalRows++;
+    }
+
+    // ---------- PAGE DATA ----------
+    const rows = [];
+
+    const fromLine =
+      (page - 1) * pageSize + 2;
+
+    const toLine =
+      page * pageSize + 1;
+
+    const parser = createReadStream(
+      targetPath
+    ).pipe(
+      parse({
+        columns: headers,
+        trim: true,
+        skip_empty_lines: true,
+        from_line: fromLine,
+        to_line: toLine
       })
     );
 
     for await (const record of parser) {
-      rows.push(record);
-    }
+      const hasValue = Object.values(record).some(
+        (val) =>
+          val !== null &&
+          val !== undefined &&
+          String(val).trim() !== ""
+      );
 
-    // Handle Raw Stats (Baseline for right panel)
-    let rawStats = (schema_json && schema_json.raw_stats) ? schema_json.raw_stats : null;
-    if (!rawStats) {
-      const statsResult = await getRawStats(paths.raw);
-      if (statsResult && statsResult.status === "success") {
-        rawStats = {
-          totalRows: statsResult.total_rows,
-          totalNulls: statsResult.total_nulls,
-          totalDuplicates: statsResult.total_duplicates,
-          columnNulls: statsResult.column_nulls
-        };
-        // Cache in DB
-        const newSchema = { ...(schema_json || {}), raw_stats: rawStats };
-        await pool.query("UPDATE datasets SET schema_json = $1 WHERE dataset_id = $2", [newSchema, datasetId]);
+      if (hasValue) {
+        rows.push(record);
       }
     }
 
-    return res.json({ 
-      success: true, 
-      data: rows, 
+    // ---------- RAW STATS ----------
+    let rawStats =
+      schema_json &&
+        schema_json.raw_stats
+        ? schema_json.raw_stats
+        : null;
+
+    if (!rawStats) {
+      const statsResult =
+        await getRawStats(paths.raw);
+
+      if (
+        statsResult &&
+        statsResult.status === "success"
+      ) {
+        rawStats = {
+          totalRows:
+            statsResult.total_rows,
+          totalNulls:
+            statsResult.total_nulls,
+          totalDuplicates:
+            statsResult.total_duplicates,
+          columnNulls:
+            statsResult.column_nulls
+        };
+
+        const newSchema = {
+          ...(schema_json || {}),
+          raw_stats: rawStats
+        };
+
+        await pool.query(
+          "UPDATE datasets SET schema_json = $1 WHERE dataset_id = $2",
+          [newSchema, datasetId]
+        );
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: rows,
       totalRows: totalRows,
       currentPage: page,
       pageSize: pageSize,
@@ -375,8 +494,15 @@ export const getDatasetPreview = async (req, res) => {
       rawStats: rawStats
     });
   } catch (err) {
-    console.error("getDatasetPreview error:", err);
-    return res.status(500).json({ success: false, message: "Failed to load preview" });
+    console.error(
+      "getDatasetPreview error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load preview"
+    });
   }
 };
 
@@ -389,36 +515,81 @@ export const downloadDataset = async (req, res) => {
   const userEmail = req.user?.email;
 
   try {
-    const userResult = await pool.query("SELECT user_id, role FROM users WHERE email = $1", [userEmail]);
+    const userResult = await pool.query(
+      "SELECT user_id, role FROM users WHERE email = $1",
+      [userEmail]
+    );
+
     const user = userResult.rows[0];
 
-    if (!user) return res.status(401).json({ success: false, message: "User not found" });
-
-    // 1. Check Access
-    const hasAccess = await checkAccess(user.user_id, datasetId, user.role);
-    if (!hasAccess) {
-      return res.status(403).json({ success: false, message: "Unauthorized: Access denied" });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found"
+      });
     }
 
-    // 2. Fetch record
-    const dsResult = await pool.query("SELECT file_name, dataset_name FROM datasets WHERE dataset_id = $1", [datasetId]);
-    if (dsResult.rows.length === 0) return res.status(404).json({ success: false, message: "Dataset not found" });
+    const hasAccess = await validateDatasetAccess(
+      user.user_id,
+      datasetId,
+      user.role
+    );
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: Access denied"
+      });
+    }
+
+    const dsResult = await pool.query(
+      "SELECT file_name, dataset_name FROM datasets WHERE dataset_id = $1",
+      [datasetId]
+    );
+
+    if (dsResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Dataset not found"
+      });
+    }
 
     const fileName = dsResult.rows[0].file_name;
     const originalName = dsResult.rows[0].dataset_name;
-    const fullName = await pool.query("SELECT full_name FROM users WHERE email = $1", [userEmail]).then(r => r.rows[0]?.full_name);
+
+    const fullName = await pool
+      .query(
+        "SELECT full_name FROM users WHERE email = $1",
+        [userEmail]
+      )
+      .then(r => r.rows[0]?.full_name);
+
     const paths = getDatasetPaths(datasetId, fileName, fullName);
-    
-    // Serve the most actualized file (Sync with getDatasetPreview logic)
+
     let filePath = paths.raw;
     const fs = (await import("fs/promises")).default;
     const tempDir = path.resolve(process.cwd(), "..", "uploads", "temp");
+
     try {
       const files = await fs.readdir(tempDir);
-      const dsTempFiles = files.filter(f => f.startsWith(datasetId) && f.endsWith(".csv"));
+
+      const dsTempFiles = files.filter(
+        f => f.startsWith(datasetId) && f.endsWith(".csv")
+      );
+
       if (dsTempFiles.length > 0) {
-        const userTempFile = dsTempFiles.find(f => f.includes(fullName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()));
-        filePath = path.join(tempDir, userTempFile || dsTempFiles[0]);
+        const safeName = fullName
+          ?.replace(/[^a-zA-Z0-9]/g, "_")
+          .toLowerCase();
+
+        const userTempFile = dsTempFiles.find(
+          f => f.includes(safeName)
+        );
+
+        filePath = path.join(
+          tempDir,
+          userTempFile || dsTempFiles[0]
+        );
       } else {
         try {
           await fs.access(paths.cleaned);
@@ -434,22 +605,20 @@ export const downloadDataset = async (req, res) => {
     try {
       await fs.access(filePath);
     } catch {
-      return res.status(404).json({ success: false, message: "Dataset not available" });
+      return res.status(404).json({
+        success: false,
+        message: "Dataset not available"
+      });
     }
 
-    // 3. Send file
-    res.download(filePath, originalName, (err) => {
-      if (err) {
-        console.error("Download error:", err);
-        if (!res.headersSent) {
-          res.status(500).json({ success: false, message: "Failed to download file" });
-        }
-      }
-    });
-
+    return res.download(filePath, originalName);
   } catch (err) {
     console.error("downloadDataset error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 };
 
@@ -527,7 +696,7 @@ export const transformDataset = async (req, res) => {
     } catch {
       // If no temp file, start from either Cleaned (if re-cleaning) or Raw
       let sourcePath = paths.raw;
-      try { await fs.access(paths.cleaned); sourcePath = paths.cleaned; } catch {}
+      try { await fs.access(paths.cleaned); sourcePath = paths.cleaned; } catch { }
       await fs.copyFile(sourcePath, paths.temp);
     }
 
@@ -537,7 +706,7 @@ export const transformDataset = async (req, res) => {
     const dsName = dsStatusResult.rows[0]?.dataset_name;
 
     await pool.query("UPDATE datasets SET upload_status = 'cleaning', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
-    
+
     // Log CLEAN_START if this is the beginning of a cleaning session
     if (oldStatus !== 'cleaning') {
       await logCleaningActivity(user.user_id, user.full_name, userEmail, datasetId, dsName, 'CLEAN_START', "ok", "Cleaning session started");
@@ -549,9 +718,9 @@ export const transformDataset = async (req, res) => {
     const { spawn } = await import("child_process");
     const pathMod = await import("path");
     const transformerScript = pathMod.resolve(process.cwd(), "..", "ml_engine", "pipeline", "transformer.py");
-    
+
     const tempOutputFile = paths.temp + ".next";
-    
+
     const pythonProcess = spawn("python", [
       transformerScript,
       "--input", paths.temp,
@@ -573,16 +742,16 @@ export const transformDataset = async (req, res) => {
             throw new Error(result.message);
           }
         } catch (err) {
-          await fs.unlink(tempOutputFile).catch(() => {});
+          await fs.unlink(tempOutputFile).catch(() => { });
           // SYSTEM ERROR ROLLBACK: Delete temp file if the script itself failed to produce valid JSON or logic
-          await fs.unlink(paths.temp).catch(() => {});
+          await fs.unlink(paths.temp).catch(() => { });
           await pool.query("UPDATE datasets SET upload_status = 'not_cleaned', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
           return res.status(500).json({ success: false, message: err.message });
         }
       } else {
-        await fs.unlink(tempOutputFile).catch(() => {});
+        await fs.unlink(tempOutputFile).catch(() => { });
         // SYSTEM ERROR ROLLBACK: Delete temp file and reset status
-        await fs.unlink(paths.temp).catch(() => {});
+        await fs.unlink(paths.temp).catch(() => { });
         await pool.query("UPDATE datasets SET upload_status = 'not_cleaned', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
         return res.status(500).json({ success: false, message: "Python transformation failed (System Error)" });
       }
@@ -612,7 +781,7 @@ export const finalizeDataset = async (req, res) => {
 
     const fs = (await import("fs/promises")).default;
     await fs.mkdir(path.dirname(paths.cleaned), { recursive: true });
-    
+
     // Find source file: prefer temp, then cleaned (if re-cleaning), then raw
     let sourcePath = paths.temp;
     try {
@@ -627,15 +796,15 @@ export const finalizeDataset = async (req, res) => {
         sourcePath = paths.raw;
       }
     }
-    
+
     // Copy to cleaned, then unlink temp if it was the source
     await fs.copyFile(sourcePath, paths.cleaned);
     if (sourcePath === paths.temp) {
-      await fs.unlink(paths.temp).catch(() => {});
+      await fs.unlink(paths.temp).catch(() => { });
     }
 
     await pool.query("UPDATE datasets SET upload_status = 'cleaned', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
-    
+
     // Log Activity (CLEAN_DONE)
     await logCleaningActivity(user.user_id, user.full_name, userEmail, datasetId, file_name, 'CLEAN_DONE', "ok", "Cleaning completed and finalized");
 
@@ -665,20 +834,20 @@ export const revertFinalize = async (req, res) => {
     const paths = getDatasetPaths(datasetId, file_name, fullName);
 
     const fs = (await import("fs/promises")).default;
-    
+
     // Check if cleaned file exists
     try {
       await fs.access(paths.cleaned);
     } catch {
       return res.status(400).json({ success: false, message: "No finalized dataset found" });
     }
-    
+
     // Copy cleaned back to temp, then unlink cleaned
     await fs.copyFile(paths.cleaned, paths.temp);
-    await fs.unlink(paths.cleaned).catch(() => {});
+    await fs.unlink(paths.cleaned).catch(() => { });
 
     await pool.query("UPDATE datasets SET upload_status = 'cleaning', updated_at = NOW() WHERE dataset_id = $1", [datasetId]);
-    
+
     return res.json({ success: true, message: "Dataset reverted to cleaning state" });
   } catch (err) {
     console.error("revertFinalize error:", err);
@@ -911,47 +1080,111 @@ export const getDashboardConfig = async (req, res) => {
 // Delete dataset
 export const deleteDataset = async (req, res) => {
   const datasetId = req.params.id;
-  const userId = req.user?.email;
+  const userEmail = req.user?.email;
 
-  if (!userId) {
-    return res.status(401).json({ success: false, message: "Authentication required" });
+  if (!userEmail) {
+    return res.status(401).json({
+      success: false,
+      message: "Authentication required"
+    });
   }
 
+  const client = await pool.connect();
+
   try {
-    // Get user's company
-    const userResult = await pool.query("SELECT company_id FROM users WHERE email = $1", [userId]);
+    await client.query("BEGIN");
+
+    // Get user company
+    const userResult = await client.query(
+      "SELECT company_id FROM users WHERE email = $1",
+      [userEmail]
+    );
+
     if (userResult.rows.length === 0) {
-      return res.status(401).json({ success: false, message: "User not found" });
+      await client.query("ROLLBACK");
+      return res.status(401).json({
+        success: false,
+        message: "User not found"
+      });
     }
+
     const companyId = userResult.rows[0].company_id;
 
-    // Check if dataset belongs to user's company
-    const datasetCheck = await pool.query(
-      "SELECT dataset_id, dataset_name FROM datasets WHERE dataset_id = $1 AND company_id = $2",
+    // Check dataset belongs to same company
+    const datasetCheck = await client.query(
+      `SELECT dataset_id, file_name
+       FROM datasets
+       WHERE dataset_id = $1 AND company_id = $2`,
       [datasetId, companyId]
     );
 
     if (datasetCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Dataset not found or access denied" });
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        success: false,
+        message: "Dataset not found or access denied"
+      });
     }
 
-    // Delete from database
-    await pool.query("DELETE FROM datasets WHERE dataset_id = $1", [datasetId]);
+    const fileName = datasetCheck.rows[0].file_name;
 
-    // Delete files from ml_engine directory
-    const datasetDir = path.resolve(process.cwd(), "..", "ml_engine", "data", "users", userId, datasetId);
-    try {
-      await fs.rm(datasetDir, { recursive: true, force: true });
-    } catch (fsErr) {
-      console.warn("Could not delete dataset files:", fsErr.message);
-    }
+    // Delete child records first (important)
+    await client.query(
+      "DELETE FROM permissions WHERE dataset_id = $1",
+      [datasetId]
+    );
 
-    return res.json({ success: true, message: "Dataset deleted successfully" });
+    // Delete from other tables that might reference datasets
+    await client.query(
+      "DELETE FROM activity_logs WHERE dataset_id = $1",
+      [datasetId]
+    ).catch(() => { });
+
+    await client.query(
+      "DELETE FROM query_logs WHERE dataset_id = $1",
+      [datasetId]
+    ).catch(() => { });
+
+    await client.query(
+      "DELETE FROM permission_requests WHERE dataset_id = $1",
+      [datasetId]
+    ).catch(() => { });
+
+    // Delete main dataset row
+    await client.query(
+      "DELETE FROM datasets WHERE dataset_id = $1",
+      [datasetId]
+    );
+
+    await client.query("COMMIT");
+
+    // Delete files after DB success
+    const paths = getDatasetPaths(datasetId, fileName);
+
+    await fs.unlink(paths.raw).catch(() => { });
+    await fs.unlink(paths.cleaned).catch(() => { });
+    await fs.unlink(paths.temp).catch(() => { });
+
+    return res.json({
+      success: true,
+      message: "Dataset deleted successfully"
+    });
+
   } catch (err) {
+    await client.query("ROLLBACK");
+
     console.error("deleteDataset error:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete dataset: " + err.message
+    });
+
+  } finally {
+    client.release();
   }
 };
+
 
 export const pauseCleaning = async (req, res) => {
   const datasetId = req.params.id;
@@ -960,7 +1193,7 @@ export const pauseCleaning = async (req, res) => {
   try {
     const userRes = await pool.query("SELECT user_id, full_name, role FROM users WHERE email = $1", [userEmail]);
     const user = userRes.rows[0];
-    
+
     const dsRes = await pool.query("SELECT dataset_name, upload_status FROM datasets WHERE dataset_id = $1", [datasetId]);
     const dsName = dsRes.rows[0]?.dataset_name;
     const status = dsRes.rows[0]?.upload_status;
@@ -1009,4 +1242,4 @@ export const getAvailableDatasetsToRequest = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
+

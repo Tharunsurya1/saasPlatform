@@ -89,15 +89,17 @@ const DatasetsPage = () => {
         if (!deleteId) return;
 
         try {
-            const res = await deleteDataset(deleteId);
-            if (res.success) {
-                setDatasets(datasets.filter(d => (d.dataset_id || d.id) !== deleteId));
-            } else {
-                alert(res.message || 'Failed to delete dataset');
-            }
+            await deleteDataset(deleteId);
+
+            setDatasets(prev =>
+                prev.filter(d => (d.dataset_id || d.id) !== deleteId)
+            );
+
+            await fetchDatasets();
+
         } catch (err) {
             console.error("Delete error:", err);
-            alert('Failed to delete dataset');
+            alert("Failed to delete dataset");
         } finally {
             setDeleteId(null);
             setShowConfirm(null);
@@ -337,11 +339,31 @@ const DatasetsPage = () => {
             <div className="view-enter">
                 {showConfirm && (
                     <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        zIndex: 1000
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0,0,0,0.7)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 9999
                     }}>
-                        <div className="glass-panel" style={{ padding: '2rem', maxWidth: 400 }}>
+                        <div
+                            className="glass-panel"
+                            style={{
+                                padding: '2rem',
+                                maxWidth: '420px',
+                                width: '90%',
+                                borderRadius: '16px',
+                                position: 'absolute',
+                                top: '50%',
+                                left: '50%',
+                                transform: 'translate(-50%, -50%)',
+                                zIndex: 10000
+                            }}
+                        >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                                 <AlertTriangle size={24} color="var(--danger)" />
                                 <h3 style={{ margin: 0 }}>Delete Dataset?</h3>
