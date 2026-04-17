@@ -91,6 +91,7 @@ const VisualizationPage = () => {
   const [filters, setFilters] = useState({});
   const [appliedFilters, setAppliedFilters] = useState({});
   const [expandedFilter, setExpandedFilter] = useState(null);
+  const [crossFilter, setCrossFilter] = useState({});
   const [page, setPage] = useState(1);
   const [tablePage, setTablePage] = useState(1);
   const TABLE_PAGE_SIZE = 50;
@@ -181,6 +182,7 @@ const VisualizationPage = () => {
     setAppliedFilters({}); 
     setSearch(''); 
     setPage(1); 
+    setCrossFilter({});
     loadData({}, '', 1); 
   }, [loadData]);
 
@@ -197,6 +199,30 @@ const VisualizationPage = () => {
       ...prev,
       [col]: { min: min !== '' ? parseFloat(min) : undefined, max: max !== '' ? parseFloat(max) : undefined },
     }));
+  }, []);
+
+  const handleCrossFilter = useCallback((col, val) => {
+    setCrossFilter(prev => {
+      const current = prev[col] || [];
+      if (current.includes(val)) {
+        const updated = current.filter(v => v !== val);
+        if (updated.length === 0) {
+          const newFilter = { ...prev };
+          delete newFilter[col];
+          return newFilter;
+        }
+        return { ...prev, [col]: updated };
+      }
+      return { ...prev, [col]: [...current, val] };
+    });
+  }, []);
+
+  const clearCrossFilter = useCallback((col) => {
+    setCrossFilter(prev => {
+      const newFilter = { ...prev };
+      delete newFilter[col];
+      return newFilter;
+    });
   }, []);
 
   const appliedFilterCount = useMemo(() => {
@@ -222,8 +248,28 @@ const VisualizationPage = () => {
     const mins = {};
     const sums = {};
     
+    // Cross-filter: apply cross-filter from chart clicks
+    const crossFilterKeys = Object.keys(crossFilter);
+    
     for (let i = 0; i < data.rows.length; i++) {
       const row = data.rows[i];
+      
+      // Apply cross-filter - skip row if it doesn't match cross-filter values
+      let skip = false;
+      for (let j = 0; j < crossFilterKeys.length; j++) {
+        const col = crossFilterKeys[j];
+        const filterVal = crossFilter[col];
+        if (filterVal && Array.isArray(filterVal)) {
+          const rowVal = String(row[col] || '').trim().toLowerCase();
+          const matches = filterVal.some(v => String(v).trim().toLowerCase() === rowVal);
+          if (!matches) {
+            skip = true;
+            break;
+          }
+        }
+      }
+      if (skip) continue;
+      
       const key = row[chartXAxis] || 'Unknown';
       const val = row[chartYAxis];
       
@@ -265,7 +311,7 @@ const VisualizationPage = () => {
     
     result.sort((a, b) => b.value - a.value);
     return result.slice(0, 10);
-  }, [data, chartXAxis, chartYAxis, aggregation, headers]);
+  }, [data, chartXAxis, chartYAxis, aggregation, headers, crossFilter]);
 
   const chartStats = useMemo(() => {
     if (!chartData.length) return null;
@@ -308,7 +354,16 @@ const VisualizationPage = () => {
               <XAxis dataKey="name" tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <YAxis tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <Tooltip content={<TooltipBox />} />
-              <Bar dataKey="value" name={chartYAxis} fill="url(#barFillGrad)" radius={[6, 6, 0, 0]}>
+              <Bar 
+                dataKey="value" 
+                name={chartYAxis} 
+                fill="url(#barFillGrad)" 
+                radius={[6, 6, 0, 0]}
+                onClick={(e) => {
+                  if (e && e.name) handleCrossFilter(chartXAxis, e.name);
+                }}
+                style={{ cursor: 'pointer' }}
+              >
                 {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Bar>
             </BarChart>
@@ -328,7 +383,18 @@ const VisualizationPage = () => {
               <XAxis dataKey="name" tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <YAxis tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <Tooltip content={<TooltipBox />} />
-              <Line type="monotone" dataKey="value" name={chartYAxis} stroke="url(#lineGrad)" strokeWidth={3} dot={{ fill: '#58a6ff', strokeWidth: 2, stroke: '#fff', r: 4 }} />
+              <Line 
+                type="monotone" 
+                dataKey="value" 
+                name={chartYAxis} 
+                stroke="url(#lineGrad)" 
+                strokeWidth={3} 
+                dot={{ fill: '#58a6ff', strokeWidth: 2, stroke: '#fff', r: 4 }}
+                onClick={(e) => {
+                  if (e && e.name) handleCrossFilter(chartXAxis, e.name);
+                }}
+                style={{ cursor: 'pointer' }}
+              />
             </LineChart>
           </ResponsiveContainer>
         );
@@ -344,8 +410,19 @@ const VisualizationPage = () => {
                   </linearGradient>
                 ))}
               </defs>
-              <Pie data={chartData} dataKey="value" nameKey="name" outerRadius={85} innerRadius={40} paddingAngle={3}
-                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+              <Pie 
+                data={chartData} 
+                dataKey="value" 
+                nameKey="name" 
+                outerRadius={85} 
+                innerRadius={40} 
+                paddingAngle={3}
+                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                onClick={(e) => {
+                  if (e && e.name) handleCrossFilter(chartXAxis, e.name);
+                }}
+                style={{ cursor: 'pointer' }}
+              >
                 {chartData.map((_, i) => <Cell key={i} fill={`url(#pieGrad${i % COLORS.length})`} stroke="rgba(22,27,34,0.5)" strokeWidth={2} />)}
               </Pie>
               <Tooltip content={<TooltipBox />} />
@@ -372,7 +449,18 @@ const VisualizationPage = () => {
               <XAxis dataKey="name" tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <YAxis tick={{ fill: '#3d4f6e', fontSize: 9 }} />
               <Tooltip content={<TooltipBox />} />
-              <Area type="monotone" dataKey="value" name={chartYAxis} stroke="url(#areaStroke)" fill="url(#areaGrad)" strokeWidth={3} />
+              <Area 
+                type="monotone" 
+                dataKey="value" 
+                name={chartYAxis} 
+                stroke="url(#areaStroke)" 
+                fill="url(#areaGrad)" 
+                strokeWidth={3}
+                onClick={(e) => {
+                  if (e && e.name) handleCrossFilter(chartXAxis, e.name);
+                }}
+                style={{ cursor: 'pointer' }}
+              />
             </AreaChart>
           </ResponsiveContainer>
         );
@@ -465,6 +553,39 @@ const VisualizationPage = () => {
               </button>
             )}
           </div>
+
+          {/* Cross Filter Display */}
+          {Object.keys(crossFilter).length > 0 && (
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: 10, color: 'var(--primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Filter size={10} /> Active Cross-Filters
+              </div>
+              {Object.entries(crossFilter).map(([col, vals]) => (
+                <div key={col} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{col}:</span>
+                  {vals.map((v, i) => (
+                    <button 
+                      key={i}
+                      onClick={() => handleCrossFilter(col, v)}
+                      style={{ 
+                        fontSize: 8, padding: '2px 6px', borderRadius: 4, 
+                        background: 'rgba(88,166,255,0.15)', border: '1px solid var(--primary)', 
+                        color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 
+                      }}
+                    >
+                      {v} <span style={{ fontSize: 10 }}>×</span>
+                    </button>
+                  ))}
+                  <button 
+                    onClick={() => clearCrossFilter(col)}
+                    style={{ fontSize: 9, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    Clear
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div style={{ padding: '10px 12px' }}>
             <div className="emp-search-bar" style={{ width: '100%' }}>
@@ -635,7 +756,7 @@ const VisualizationPage = () => {
               </>
             )}
             <div style={{ marginLeft: 'auto', fontFamily: "'DM Mono', monospace", fontSize: 9, color: 'var(--text-muted)' }}>
-              {data?.totalRows?.toLocaleString() || '0'} rows · {appliedFilterCount} filter{appliedFilterCount !== 1 ? 's' : ''}
+              {data?.totalRows?.toLocaleString() || '0'} rows · {appliedFilterCount + Object.keys(crossFilter).length} filter{(appliedFilterCount + Object.keys(crossFilter).length) !== 1 ? 's' : ''}
             </div>
           </div>
 

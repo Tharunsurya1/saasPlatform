@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { Database, Calendar, FileText, ChevronRight, Loader, BarChart3, Trash2, AlertTriangle, Sparkles, Users, Eye, Download } from 'lucide-react';
+import { Database, Calendar, FileText, ChevronRight, Loader, Trash2, AlertTriangle, Users, Eye, Download } from 'lucide-react';
 import { getDatasets, deleteDataset, getDatasetAssignments, downloadDataset } from '../services/api';
 import MainLayout from '../layout/MainLayout';
 import AdminLayout from '../layout/AdminLayout';
@@ -17,7 +17,7 @@ const DatasetsPage = () => {
     const [previewDataset, setPreviewDataset] = useState(null);
     const [datasetAssignments, setDatasetAssignments] = useState({});
     const [highlightedId, setHighlightedId] = useState(null);
-    
+
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -71,7 +71,7 @@ const DatasetsPage = () => {
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }, 500);
-                
+
                 // Remove highlight after 5 seconds
                 setTimeout(() => setHighlightedId(null), 5000);
             }
@@ -87,7 +87,7 @@ const DatasetsPage = () => {
 
     const confirmDelete = async () => {
         if (!deleteId) return;
-        
+
         try {
             const res = await deleteDataset(deleteId);
             if (res.success) {
@@ -161,93 +161,90 @@ const DatasetsPage = () => {
                     const dsId = ds.dataset_id || ds.id;
                     const isHighlighted = highlightedId === dsId;
                     return (
-                        <div 
-                            key={dsId} 
+                        <div
+                            key={dsId}
                             id={`ds-card-${dsId}`}
-                            className={`glass-panel ${isHighlighted ? 'admin-card-highlight' : ''}`} 
+                            className={`glass-panel ${isHighlighted ? 'admin-card-highlight' : ''}`}
                             style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}
                         >
 
-                        <div style={{ padding: '20px', flex: 1 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(88,166,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <Database size={20} color="var(--primary)" />
+                            <div style={{ padding: '20px', flex: 1 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                        <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(88,166,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Database size={20} color="var(--primary)" />
+                                        </div>
+                                        <div>
+                                            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{ds.name}</div>
+                                            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatSize(ds.file_size || ds.size)}</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{ds.name}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatSize(ds.file_size || ds.size)}</div>
-                                    </div>
+                                    {getStatusBadge(ds.status)}
                                 </div>
-                                {getStatusBadge(ds.status)}
-                            </div>
-                            
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
-                                {ds.rows_count?.toLocaleString() || '—'} rows · {ds.columns_count || '—'} cols · Uploaded {new Date(ds.created_at).toLocaleDateString()}
-                            </div>
-                            
-                            <div style={{ marginBottom: 20 }}>
-                                <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <Users size={12} /> Access Management
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{ display: 'flex', marginLeft: 4 }}>
-                                        {datasetAssignments[ds.dataset_id || ds.id] && datasetAssignments[ds.dataset_id || ds.id].length > 0 ? (
-                                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                                {datasetAssignments[ds.dataset_id || ds.id].slice(0, 4).map((user, idx) => (
-                                                    <div 
-                                                        key={user.user_id} 
-                                                        title={user.full_name}
-                                                        style={{ 
-                                                            width: 28, height: 28, borderRadius: '50%', 
-                                                            background: 'var(--primary)', border: '2px solid var(--bg-dark)',
-                                                            marginLeft: idx === 0 ? 0 : -10,
-                                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                            fontSize: 10, fontWeight: 700, color: '#fff',
-                                                            zIndex: 5 - idx
-                                                        }}
-                                                    >
-                                                        {user.full_name?.charAt(0)}
-                                                    </div>
-                                                ))}
-                                                {datasetAssignments[ds.dataset_id || ds.id].length > 4 && (
-                                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 10 }}>
-                                                        +{datasetAssignments[ds.dataset_id || ds.id].length - 4} more
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>No users assigned</span>
-                                        )}
-                                    </div>
-                                    <button 
-                                        className="admin-btn admin-btn-ghost admin-btn-sm" 
-                                        style={{ fontSize: 11, padding: '6px 12px' }}
-                                        onClick={() => setAssignModal(ds)}
-                                    >
-                                        Assign Users
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
 
-                        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 10 }}>
-                            <button className="admin-btn admin-btn-primary" style={{ flex: 1, height: 36, fontSize: 13 }}
-                                onClick={() => navigate(ds.status === 'ready' || ds.status === 'completed' || ds.status === 'cleaned' ? `/employee/visualization?ds=${ds.dataset_id || ds.id}&name=${encodeURIComponent(ds.name)}` : `/employee/cleaning?ds=${ds.dataset_id || ds.id}&name=${encodeURIComponent(ds.name)}`)}>
-                                {ds.status === 'ready' || ds.status === 'completed' || ds.status === 'cleaned' ? <><BarChart3 size={14} /> View Data</> : <><Sparkles size={14} /> Clean Data</>}
-                            </button>
-                            <button className="admin-btn admin-btn-ghost admin-btn-sm" style={{ padding: '0 10px', height: 36 }} onClick={(e) => { e.stopPropagation(); setPreviewDataset(ds); }} title="Quick Preview">
-                                <Eye size={16} />
-                            </button>
-                            <button className="admin-btn admin-btn-ghost admin-btn-sm" style={{ padding: '0 10px', height: 36 }} onClick={(e) => handleDownload(ds, e)} title="Download CSV">
-                                <Download size={16} />
-                            </button>
-                            <button className="admin-btn admin-btn-danger admin-btn-sm" style={{ padding: '0 10px', height: 36 }} onClick={(e) => handleDelete(ds.dataset_id || ds.id, e)}>
-                                <Trash2 size={16} />
-                            </button>
+                                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
+                                    {ds.rows_count?.toLocaleString() || '—'} rows · {ds.columns_count || '—'} cols · Uploaded {new Date(ds.created_at).toLocaleDateString()}
+                                </div>
+
+                                <div style={{ marginBottom: 20 }}>
+                                    <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <Users size={12} /> Access Management
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <div style={{ display: 'flex', marginLeft: 4 }}>
+                                            {datasetAssignments[ds.dataset_id || ds.id] && datasetAssignments[ds.dataset_id || ds.id].length > 0 ? (
+                                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                    {datasetAssignments[ds.dataset_id || ds.id].slice(0, 4).map((user, idx) => (
+                                                        <div
+                                                            key={user.user_id}
+                                                            title={user.full_name}
+                                                            style={{
+                                                                width: 28, height: 28, borderRadius: '50%',
+                                                                background: 'var(--primary)', border: '2px solid var(--bg-dark)',
+                                                                marginLeft: idx === 0 ? 0 : -10,
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                fontSize: 10, fontWeight: 700, color: '#fff',
+                                                                zIndex: 5 - idx
+                                                            }}
+                                                        >
+                                                            {user.full_name?.charAt(0)}
+                                                        </div>
+                                                    ))}
+                                                    {datasetAssignments[ds.dataset_id || ds.id].length > 4 && (
+                                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 10 }}>
+                                                            +{datasetAssignments[ds.dataset_id || ds.id].length - 4} more
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>No users assigned</span>
+                                            )}
+                                        </div>
+                                        <button
+                                            className="admin-btn admin-btn-ghost admin-btn-sm"
+                                            style={{ fontSize: 11, padding: '6px 12px' }}
+                                            onClick={() => setAssignModal(ds)}
+                                        >
+                                            Assign Users
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px 20px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 10 }}>
+                                <button className="admin-btn admin-btn-ghost admin-btn-sm" style={{ padding: '0 10px', height: 36 }} onClick={(e) => { e.stopPropagation(); setPreviewDataset(ds); }} title="Quick Preview">
+                                    <Eye size={16} />
+                                </button>
+                                <button className="admin-btn admin-btn-ghost admin-btn-sm" style={{ padding: '0 10px', height: 36 }} onClick={(e) => handleDownload(ds, e)} title="Download CSV">
+                                    <Download size={16} />
+                                </button>
+                                <button className="admin-btn admin-btn-danger admin-btn-sm" style={{ padding: '0 10px', height: 36 }} onClick={(e) => handleDelete(ds.dataset_id || ds.id, e)}>
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                );})}
+                    );
+                })}
             </div>
 
         </div>
@@ -256,13 +253,13 @@ const DatasetsPage = () => {
     const renderEmployeeContent = () => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {datasets.map((dataset) => (
-                <div 
-                    key={dataset.dataset_id} 
-                    className="glass-panel hover-scale" 
-                    style={{ 
-                        padding: '1.5rem', 
-                        display: 'flex', 
-                        alignItems: 'center', 
+                <div
+                    key={dataset.dataset_id}
+                    className="glass-panel hover-scale"
+                    style={{
+                        padding: '1.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'space-between',
                         cursor: 'pointer',
                         transition: 'all 0.3s ease'
@@ -270,10 +267,10 @@ const DatasetsPage = () => {
                     onClick={() => navigate(`/dashboard/${dataset.dataset_id}`)}
                 >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                        <div style={{ 
-                            background: (dataset.status === 'completed' || dataset.status === 'ready' || dataset.status === 'cleaned') ? 'rgba(63, 185, 80, 0.15)' : 'rgba(210, 153, 34, 0.15)', 
-                            padding: '0.75rem', 
-                            borderRadius: '10px' 
+                        <div style={{
+                            background: (dataset.status === 'completed' || dataset.status === 'ready' || dataset.status === 'cleaned') ? 'rgba(63, 185, 80, 0.15)' : 'rgba(210, 153, 34, 0.15)',
+                            padding: '0.75rem',
+                            borderRadius: '10px'
                         }}>
                             <FileText color={(dataset.status === 'completed' || dataset.status === 'ready' || dataset.status === 'cleaned') ? 'var(--secondary)' : 'var(--warning)'} />
                         </div>
@@ -284,8 +281,8 @@ const DatasetsPage = () => {
                                     <Calendar size={14} /> {new Date(dataset.created_at).toLocaleDateString()}
                                 </span>
                                 <span>{dataset.rows_count || 0} Rows • {dataset.columns_count || 0} Columns</span>
-                                <span style={{ 
-                                    textTransform: 'capitalize', 
+                                <span style={{
+                                    textTransform: 'capitalize',
                                     color: (dataset.status === 'completed' || dataset.status === 'ready' || dataset.status === 'cleaned') ? 'var(--secondary)' : 'var(--warning)',
                                     fontWeight: 600
                                 }}>
@@ -295,7 +292,7 @@ const DatasetsPage = () => {
                         </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <button 
+                        <button
                             className="btn-ghost"
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -307,7 +304,7 @@ const DatasetsPage = () => {
                             <Eye size={18} />
                         </button>
                         {(dataset.status === 'completed' || dataset.status === 'ready' || dataset.status === 'cleaned') && (
-                            <button 
+                            <button
                                 className="btn-ghost"
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -318,7 +315,7 @@ const DatasetsPage = () => {
                                 <BarChart3 size={16} /> Visualize
                             </button>
                         )}
-                        <button 
+                        <button
                             className="btn-ghost"
                             onClick={(e) => handleDelete(dataset.dataset_id, e)}
                             style={{ padding: '0.5rem', color: 'var(--danger)', display: 'flex', alignItems: 'center' }}
@@ -380,17 +377,17 @@ const DatasetsPage = () => {
             </div>
 
             {assignModal && (
-                <AssignUserModal 
-                    dataset={assignModal} 
-                    onClose={() => setAssignModal(null)} 
+                <AssignUserModal
+                    dataset={assignModal}
+                    onClose={() => setAssignModal(null)}
                     onUpdate={() => fetchAssignments(assignModal.dataset_id || assignModal.id)}
                 />
             )}
 
             {previewDataset && (
-                <DatasetPreviewModal 
-                    dataset={previewDataset} 
-                    onClose={() => setPreviewDataset(null)} 
+                <DatasetPreviewModal
+                    dataset={previewDataset}
+                    onClose={() => setPreviewDataset(null)}
                 />
             )}
 
