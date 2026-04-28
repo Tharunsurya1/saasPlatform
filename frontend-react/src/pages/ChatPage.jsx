@@ -7,7 +7,7 @@ const ChatPage = () => {
     const navigate = useNavigate();
 
     return (
-        <div className="view-enter" style={{ height: 'calc(100vh - 160px)', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="view-enter" style={{ height: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'column', gap: '1rem', overflow: 'hidden' }}>
 
             {/* Header */}
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>

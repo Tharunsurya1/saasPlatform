@@ -269,9 +269,9 @@ const QueryAssistant = ({ datasetId }) => {
   const inputRef   = useRef(null);
   const listRef    = useRef(null);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll disabled since page is now fixed without scrolling
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // No scrolling needed for fixed layout
   }, [messages, isLoading]);
 
   const handleSend = useCallback(async (text) => {
@@ -442,7 +442,7 @@ const QueryAssistant = ({ datasetId }) => {
       <div
         ref={listRef}
         style={{
-          flexGrow: 1, overflowY: 'auto', padding: '1.25rem',
+          flexGrow: 1, overflow: 'hidden', padding: '1.25rem',
           display: 'flex', flexDirection: 'column', gap: '1.25rem',
         }}
       >
